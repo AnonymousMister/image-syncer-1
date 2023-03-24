@@ -331,8 +331,13 @@ func (c *Client) FilterTags(tags []string, destination string) ([]string, error)
 					repeat = true
 				}
 			}
+			if !repeat && len(dtags) > i {
+				if tags[i] == dtags[i] {
+					repeat = true
+				}
+			}
 			if !repeat {
-				for j := i + 1; j < len(dtags); j++ {
+				for j := 0; j < len(dtags); j++ {
 					if tags[i] == dtags[j] {
 						repeat = true
 						break

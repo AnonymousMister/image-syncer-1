@@ -34,6 +34,7 @@ type Client struct {
 	urlPairListChan            chan int
 	failedTaskListChan         chan int
 	failedTaskGenerateListChan chan int
+	increment                  bool
 }
 
 // URLPair is a pair of source and destination url
@@ -45,7 +46,7 @@ type URLPair struct {
 // NewSyncClient creates a synchronization client
 func NewSyncClient(configFile, authFile, imageFile, logFile string,
 	routineNum, retries int, defaultDestRegistry, defaultDestNamespace string,
-	osFilterList, archFilterList []string) (*Client, error) {
+	osFilterList, archFilterList []string, increment bool) (*Client, error) {
 
 	logger := NewFileLogger(logFile)
 
@@ -68,6 +69,7 @@ func NewSyncClient(configFile, authFile, imageFile, logFile string,
 		urlPairListChan:            make(chan int, 1),
 		failedTaskListChan:         make(chan int, 1),
 		failedTaskGenerateListChan: make(chan int, 1),
+		increment:                  increment,
 	}, nil
 }
 
@@ -246,7 +248,11 @@ func (c *Client) GenerateSyncTask(source string, destination string) ([]*URLPair
 			return nil, fmt.Errorf("get tags failed from %s error: %v", sourceURL.GetURL(), err)
 		}
 		c.logger.Infof("Get tags of %s successfully: %v", sourceURL.GetURL(), tags)
-
+		if c.increment {
+			c.logger.Infof("合并tags %s ", sourceURL.GetURL())
+			tags, _ = c.FilterTags(tags, destination)
+			c.logger.Infof("合并完成tags %s successfully: %v", sourceURL.GetURL(), tags)
+		}
 		// generate url pairs for tags
 		var urlPairs = []*URLPair{}
 		for _, tag := range tags {
@@ -283,6 +289,57 @@ func (c *Client) GenerateSyncTask(source string, destination string) ([]*URLPair
 	c.PutATask(sync.NewTask(imageSource, imageDestination, c.config.osFilterList, c.config.archFilterList, c.logger))
 	c.logger.Infof("Generate a task for %s to %s", sourceURL.GetURL(), destURL.GetURL())
 	return nil, nil
+}
+
+func (c *Client) FilterTags(tags []string, destination string) ([]string, error) {
+	if destination == "" {
+		return tags, fmt.Errorf("source url should not be empty")
+	}
+
+	destinationURL, err := tools.NewRepoURL(destination)
+	if err != nil {
+		return tags, fmt.Errorf("url %s format error: %v", destination, err)
+	}
+	var imageDestination *sync.ImageSource
+	if auth, exist := c.config.GetAuth(destinationURL.GetRegistry(), destinationURL.GetNamespace()); exist {
+		c.logger.Infof("Find auth information for %v, username: %v", destinationURL.GetURL(), auth.Username)
+		imageDestination, err = sync.NewImageSource(destinationURL.GetRegistry(), destinationURL.GetRepoWithNamespace(), destinationURL.GetTag(),
+			auth.Username, auth.Password, auth.Insecure)
+		if err != nil {
+			return tags, fmt.Errorf("generate %s image source error: %v", destinationURL.GetURL(), err)
+		}
+	} else {
+		c.logger.Infof("Cannot find auth information for %v, pull actions will be anonymous", destinationURL.GetURL())
+		imageDestination, err = sync.NewImageSource(destinationURL.GetRegistry(), destinationURL.GetRepoWithNamespace(), destinationURL.GetTag(),
+			"", "", false)
+		if err != nil {
+			return tags, fmt.Errorf("generate %s image source error: %v", destinationURL.GetURL(), err)
+		}
+	}
+	dtags, derr := imageDestination.GetSourceRepoTags()
+	if derr != nil {
+		return tags, fmt.Errorf("get tags failed from %s error: %v", destinationURL.GetURL(), err)
+	}
+	if len(dtags) > 9 {
+		tagslen := len(tags) - 15
+		newArr := make([]string, 0)
+		for i := 0; i < len(tags); i++ {
+			repeat := false
+			if !(i > tagslen) {
+				for j := i + 1; j < len(dtags); j++ {
+					if tags[i] == dtags[j] {
+						repeat = true
+						break
+					}
+				}
+			}
+			if !repeat {
+				newArr = append(newArr, tags[i])
+			}
+		}
+		return newArr, nil
+	}
+	return tags, nil
 }
 
 // GetATask return a sync.Task struct if the task list is not empty

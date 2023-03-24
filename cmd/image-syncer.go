@@ -14,6 +14,8 @@ var (
 	procNum, retries int
 
 	osFilterList, archFilterList []string
+
+	increment bool
 )
 
 // RootCmd describes "image-syncer" command
@@ -27,7 +29,7 @@ var RootCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// work starts here
 		client, err := client.NewSyncClient(configFile, authFile, imageFile, logPath, procNum, retries,
-			defaultRegistry, defaultNamespace, osFilterList, archFilterList)
+			defaultRegistry, defaultNamespace, osFilterList, archFilterList,increment)
 		if err != nil {
 			return fmt.Errorf("init sync client error: %v", err)
 		}
@@ -50,6 +52,7 @@ func init() {
 	RootCmd.PersistentFlags().IntVarP(&retries, "retries", "r", 2, "times to retry failed task")
 	RootCmd.PersistentFlags().StringArrayVar(&osFilterList, "os", []string{}, "os list to filter source tags, not works for docker v2 schema1 media")
 	RootCmd.PersistentFlags().StringArrayVar(&archFilterList, "arch", []string{}, "architecture list to filter source tags")
+	RootCmd.PersistentFlags().BoolVar(&increment, "increment", true, "Incremental synchronization or not")
 }
 
 // Execute executes the RootCmd

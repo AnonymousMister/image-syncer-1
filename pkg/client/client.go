@@ -291,6 +291,8 @@ func (c *Client) GenerateSyncTask(source string, destination string) ([]*URLPair
 	return nil, nil
 }
 
+var straight = [...]string{"latest"}
+
 func (c *Client) FilterTags(tags []string, destination string) ([]string, error) {
 	if destination == "" {
 		return tags, fmt.Errorf("source url should not be empty")
@@ -320,12 +322,16 @@ func (c *Client) FilterTags(tags []string, destination string) ([]string, error)
 	if derr != nil {
 		return tags, fmt.Errorf("get tags failed from %s error: %v", destinationURL.GetURL(), err)
 	}
-	if len(dtags) > 9 {
-		tagslen := len(tags) - 15
+	if len(dtags) > 0 {
 		newArr := make([]string, 0)
 		for i := 0; i < len(tags); i++ {
 			repeat := false
-			if !(i > tagslen) {
+			for _, v := range straight {
+				if find := strings.Contains(tags[i], v); find {
+					repeat = true
+				}
+			}
+			if !repeat {
 				for j := i + 1; j < len(dtags); j++ {
 					if tags[i] == dtags[j] {
 						repeat = true
